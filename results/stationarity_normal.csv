@@ -1,0 +1,9 @@
+sensor,p_ADF,p_KPSS,drift_in_std,verdict
+Accelerometer1RMS,0.0055,0.01,1.53,stationary by difference -> difference
+Accelerometer2RMS,0.0528,0.01,-1.55,non-stationary -> difference
+Current,0.0,0.1,-0.03,stationary
+Pressure,0.0,0.1,0.02,stationary
+Temperature,0.0001,0.01,-1.88,stationary by difference -> difference
+Thermocouple,0.0075,0.01,2.24,stationary by difference -> difference
+Voltage,0.0,0.1,0.03,stationary
+Volume Flow RateRMS,0.0175,0.01,1.82,stationary by difference -> difference
