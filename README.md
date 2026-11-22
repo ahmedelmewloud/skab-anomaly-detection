@@ -46,25 +46,5 @@ python src/diagnostic_gaps.py
 ```
 Sorties : `results/journal_diagnostic.csv`, `results/journal_gaps.csv`
 
-5. Étape 1 : profil du « normal » et stationnarité
-```bash
-python src/step1_normal.py
-```
-Sorties : `results/normal_profile.csv`, `results/stationarity_normal.csv`, `results/normal_signals.png`
 
-## État d'avancement
-- [x] Diagnostic des données brutes
-- [x] Étape 1 : apprendre le normal et vérifier la stationnarité
-- [ ] Étape 2 : ACP (T² et SPE)
-- [ ] Étape 3 : Isolation Forest et résidu de prévision
-- [ ] Étape 4 : seuil et persistance
-- [ ] Étape 5 : évaluation par événement
 
-## Résultats de l'étape 1
-- Courant, tension et pression : stationnaires.
-- Accéléromètres, débit, température, thermocouple : dérive lente (mise en régime probable de la pompe).
-- Fichier normal : 556 trous isolés d'une seconde (≈ 5,6 %), conservés sans imputation.
-
-## Limites
-- Le « normal » appris n'est pas strictement constant.
-- La pression a un MAD nul : une échelle minimale sera nécessaire pour le z-score robuste.
