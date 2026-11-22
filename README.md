@@ -21,6 +21,12 @@ SKAB (Skoltech Anomaly Benchmark) : https://github.com/waico/SKAB
 
 ## Reproduire les résultats
 
+Tout relancer en une commande (depuis la racine, environnement activé) :
+```bash
+./scripts/run_all.sh
+```
+Détail des étapes :
+
 1. Cloner le dépôt
 ```bash
 git clone https://github.com/ahmedelmewloud/skab-anomaly-detection.git
@@ -80,6 +86,14 @@ python src/step5A_evaluate.py    # lit results/step4A_chosen.csv
 python src/step5B_evaluate.py    # lit results/step4B_chosen.csv (et step5A_summary.csv pour la comparaison A/B)
 ```
 Sorties : `results/step5A_test_events.csv`, `results/step5A_summary.csv`, `results/step5B_test_events.csv`, `results/step5B_summary.csv`, `results/step5B_summary_clean_calib.csv` (sans les fichiers dont la fenêtre de calibration contient une anomalie)
+
+10. Incertitude (bootstrap par fichier) et ablation sur le jeu de test
+```bash
+python src/step6_uncertainty_ablation.py   # lit step4A_chosen.csv, step4B_chosen.csv, step4B_tradeoff_dev.csv
+```
+Sorties : `results/step6_uncertainty.csv`, `results/step6_ablation.csv`
+
+L'article se trouve dans `article/rapport.md`.
 
 L'ordre compte : l'étape 5A dépend de 4A, l'étape 5B dépend de 4B (et de 5A pour la comparaison). Toutes les commandes se lancent depuis la racine du dépôt.
 
