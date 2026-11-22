@@ -1,32 +1,17 @@
-from pathlib import Path
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.linear_model import Ridge
 from sklearn.metrics import average_precision_score
-from sklearn.preprocessing import StandardScaler
+from common import DEV, OUT, load, fit_normal, pca_scores
 
-ROOT = Path("data/raw/SKAB/data")
-NORMAL = ROOT / "anomaly-free" / "anomaly-free.csv"
-DEV = sorted((ROOT / "valve1").glob("*.csv"))   # développement ; valve2 et other = test, NON utilisés ici
-OUT = Path("results")
-OUT.mkdir(exist_ok=True)
-LABELS = ["anomaly", "changepoint"]
+# DEV = valve1 ; valve2 et other = test, NON utilisés ici
 SEED = 42
 LAGS = 3          # le résidu utilise les 3 secondes précédentes
-VAR_TARGET = 0.90
-
-
-def load(path):
-    return (pd.read_csv(path, sep=";", parse_dates=["datetime"])
-              .set_index("datetime").sort_index())
-
 
 # ---------- 1. Apprendre le normal (fichier sans anomalie UNIQUEMENT) ----------
-normal = load(NORMAL)
-sensors = [c for c in normal.columns if c not in LABELS]
-scaler = StandardScaler().fit(normal[sensors])
+normal, sensors, scaler, pca, _ = fit_normal()
+k = pca.n_components_
 
 
 def scale(df):
@@ -34,20 +19,6 @@ def scale(df):
 
 
 Xn = scale(normal)
-
-# ACP (même modèle que l'étape 2)
-cum = np.cumsum(PCA().fit(Xn).explained_variance_ratio_)
-k = int(np.argmax(cum >= VAR_TARGET)) + 1
-pca = PCA(n_components=k).fit(Xn)
-
-
-def pca_scores(X):
-    Xc = X.values - pca.mean_
-    t = Xc @ pca.components_.T
-    t2 = (t ** 2 / pca.explained_variance_).sum(axis=1)
-    spe = ((Xc - t @ pca.components_) ** 2).sum(axis=1)
-    return t2, spe
-
 
 # Isolation Forest
 iso = IsolationForest(n_estimators=200, random_state=SEED).fit(Xn)
@@ -81,7 +52,7 @@ for p in DEV:
     d = load(p)
     X = scale(d)
     y = d["anomaly"].values
-    t2, spe = pca_scores(X)
+    t2, spe, _, _ = pca_scores(X.values, pca)
     sc = {
         "T2": t2,
         "SPE": spe,

@@ -1,54 +1,27 @@
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from common import (DEV, OUT, MIN_RECALL, FA_BUDGET, load, fit_normal, spe_score,
+                    alerts, events, counts, choose)
 
-ROOT = Path("data/raw/SKAB/data")
-NORMAL = ROOT / "anomaly-free" / "anomaly-free.csv"
-DEV = sorted((ROOT / "valve1").glob("*.csv"))   # développement ; valve2 et other = test, NON utilisés
-OUT = Path("results")
-OUT.mkdir(exist_ok=True)
-LABELS = ["anomaly", "changepoint"]
-VAR_TARGET = 0.90
+# DEV = valve1 ; valve2 et other = test, NON utilisés
 QUANTILES = [0.5, 0.8, 0.9, 0.95, 0.99, 0.999, 1.0]
 MAX_MULTS = [1.25, 1.5, 2.0]
 PERSIST = [1, 3, 5, 10, 20, 30]
-MIN_RECALL = 0.9     # règle de choix (hypothèse à justifier)
-FA_BUDGET = 2.0      # fausses alertes par heure maximum
-
-
-def load(path):
-    return (pd.read_csv(path, sep=";", parse_dates=["datetime"])
-              .set_index("datetime").sort_index())
-
 
 # ---- 1. Modèle A : le normal est appris sur anomaly-free UNIQUEMENT ----
-normal = load(NORMAL)
-sensors = [c for c in normal.columns if c not in LABELS]
-scaler = StandardScaler().fit(normal[sensors])
-Xn = scaler.transform(normal[sensors])
-cum = np.cumsum(PCA().fit(Xn).explained_variance_ratio_)
-pca = PCA(n_components=int(np.argmax(cum >= VAR_TARGET)) + 1).fit(Xn)
-
-
-def spe_score(df):
-    Xc = scaler.transform(df[sensors]) - pca.mean_
-    t = Xc @ pca.components_.T
-    return ((Xc - t @ pca.components_) ** 2).sum(axis=1)
-
+_, sensors, scaler, pca, _ = fit_normal()
 
 # ---- 2. Scores du dev-set ----
 dev = []
 for p in DEV:
     d = load(p)
-    dev.append((d.index, spe_score(d), d["anomaly"].values.astype(int)))
+    dev.append((d.index, spe_score(d, sensors, scaler, pca), d["anomaly"].values.astype(int)))
 pooled_normal = np.concatenate([s[y == 0] for _, s, y in dev])
 hours_normal = len(pooled_normal) / 3600
-n_events = sum(int((np.diff(np.r_[0, y, 0]) == 1).sum()) for _, _, y in dev)
+n_events = sum(len(list(events(y))) for _, _, y in dev)
 print(f"Dev-set : {len(dev)} fichiers, {n_events} événements, {hours_normal:.1f} h de fonctionnement normal")
 
 # ---- 3. Seuils candidats, exprimés sur l'échelle du dev-set ----
@@ -60,21 +33,10 @@ print("Seuils testés :", {k: round(v) for k, v in taus.items()})
 
 
 def evaluate(tau, k):
-    n_ev = n_det = n_false = 0
-    delays = []
-    for idx, s, y in dev:
-        alert = pd.Series((s > tau).astype(int)).rolling(k).sum().eq(k).values   # causal
-        d = np.diff(np.r_[0, y, 0])
-        for a, b in zip(np.where(d == 1)[0], np.where(d == -1)[0]):
-            n_ev += 1
-            hit = np.where(alert[a:b])[0]
-            if len(hit):
-                n_det += 1
-                delays.append((idx[a + hit[0]] - idx[a]).total_seconds())
-        starts = alert & ~np.r_[False, alert[:-1]]
-        n_false += int((starts & (y == 0)).sum())
-    return {"recall": n_det / n_ev,
-            "median_delay_s": float(np.median(delays)) if delays else np.nan,
+    c = counts([(idx, y, alerts(s, tau, k)) for idx, s, y in dev])
+    n_false = c["n_alert"] - c["n_just"]
+    return {"recall": c["n_det"] / c["n_ev"],
+            "median_delay_s": float(np.median(c["delays"])) if c["delays"] else np.nan,
             "false_per_hour": n_false / hours_normal,
             "false_alerts": n_false}
 
@@ -93,17 +55,16 @@ for col, title in [("false_per_hour", "FAUSSES ALERTES PAR HEURE"),
 
 # ---- 4. Choix selon la règle écrite à l'avance ----
 print(f"\n=== RÈGLE : rappel >= {MIN_RECALL} et fausses alertes/h <= {FA_BUDGET} ===")
-ok = res[(res.recall >= MIN_RECALL) & (res.false_per_hour <= FA_BUDGET)]
-if ok.empty:
+best, rule_ok = choose(res)
+if not rule_ok:
     print("Aucun réglage ne respecte la règle. Meilleurs rappels sous le budget de fausses alertes :")
     under = res[res.false_per_hour <= FA_BUDGET].sort_values(
         ["recall", "median_delay_s"], ascending=[False, True]).head(5)
     print(under.round(2).to_string(index=False))
-else:
-    best = ok.sort_values(["median_delay_s", "false_per_hour"]).iloc[0]
-    print("Réglage retenu :")
-    print(best.round(2).to_string())
-    pd.DataFrame([best]).to_csv(OUT / "step4A_chosen.csv", index=False)
+print("Réglage retenu :" if rule_ok else "Réglage retenu (repli) :")
+print(best.to_frame().T.round(2).to_string(index=False))
+pd.DataFrame([{**best.to_dict(), "regle_respectee": "oui" if rule_ok else "non (repli)"}]).to_csv(
+    OUT / "step4A_chosen.csv", index=False)
 
 # ---- 5. Figure ----
 fig, axes = plt.subplots(1, 2, figsize=(13, 5))
